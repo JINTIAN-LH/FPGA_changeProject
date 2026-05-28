@@ -14,7 +14,7 @@
 
 ### 2) feat: land non-FPGA protocol mock pipeline
 
-- Commit: pending
+- Commit: 9308fe4c6dde0fe614b5392c8e6fdb58de39c51f
 - Branch: main
 - Scope:
   - 新增正式 ICD 对齐的协议编解码、机器可读契约快照与 UDP 传输层
@@ -23,3 +23,13 @@
   - 新增协议、校验、传输、契约快照、`run_all` 接入等回归测试
   - 补充 `doc` 下 ICD/数据字典 PDF、图片与 Markdown 转写文档
   - 更新 `README.md`，补全非 FPGA 闭环运行与验证说明
+
+### 3) docs: improve README for beginner readability
+
+- Commit: pending
+- Branch: main
+- Scope:
+  - 重构 `README.md` 开篇结构，新增“当前进度 / 最终目标 / 推荐阅读顺序”
+  - 新增当前可运行链路与远期目标链路 Mermaid 图，强调从 Mock 到实机的演进路径
+  - 修复“项目结构”段落断裂与重复内容，统一目录树展示
+  - 强化小白视角导览，明确每个核心文件的作用与阅读建议
