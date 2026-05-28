@@ -20,10 +20,23 @@ import sys
 import os
 import json
 import time
+from dataclasses import asdict
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import STOCK_LIST, OUTPUT_DIR
+from config import (
+    ENABLE_FPGA_UDP,
+    FPGA_UDP_HOST,
+    FPGA_UDP_PORT,
+    OUTPUT_DIR,
+    SAVE_FPGA_RESULTS,
+    STOCK_LIST,
+    UDP_MAX_RETRIES,
+    UDP_TIMEOUT_SECONDS,
+)
+from data_validator import ValidationError, validate_kline_bar, validate_kline_sequence
+from fpga_protocol import UpstreamFrame, minute_to_epoch
+from udp_transport import TransportTimeoutError, UdpTransport
 
 
 # ===================== 工具 =====================
@@ -45,6 +58,48 @@ def load_json(filepath):
 
 def now_str():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def get_fpga_results_path(stock_code):
+    return os.path.join(OUTPUT_DIR, f"{stock_code}_fpga_responses.json")
+
+
+def append_fpga_results(stock_code, responses):
+    if not SAVE_FPGA_RESULTS or not responses:
+        return
+    fp = get_fpga_results_path(stock_code)
+    existing = load_json(fp)
+    existing.extend(responses)
+    save_json(existing, fp)
+
+
+def build_transport():
+    if not ENABLE_FPGA_UDP:
+        return None
+    return UdpTransport(
+        host=FPGA_UDP_HOST,
+        port=FPGA_UDP_PORT,
+        timeout_seconds=UDP_TIMEOUT_SECONDS,
+        max_retries=UDP_MAX_RETRIES,
+    )
+
+
+def send_bars_to_fpga(stock_code, bars, transport):
+    validated = validate_kline_sequence(bars)
+    responses = []
+    for bar in validated:
+        frame = UpstreamFrame(
+            stock_code=stock_code,
+            timestamp=minute_to_epoch(bar["time"]),
+            open=bar["open"],
+            high=bar["high"],
+            low=bar["low"],
+            close=bar["close"],
+            volume=bar["volume"],
+        )
+        response = transport.request_response(frame)
+        responses.append(asdict(response) if hasattr(response, "__dataclass_fields__") else response)
+    return responses
 
 
 # ===================== STEP 1: 尝试获取历史 =====================
@@ -144,20 +199,21 @@ def commit_minute_kline(history, history_fp, minute_key, now_dt, samples):
 
     minute_vol = calc_minute_vol(samples)
 
-    snapshot = {
+    snapshot = validate_kline_bar({
         "time": ts,
         "open":  round(open_price, 2),
         "high":  round(high_price, 2),
         "low":   round(low_price, 2),
         "close": round(close_price, 2),
         "volume": minute_vol,
-    }
+    })
     history.append(snapshot)
     save_json(history, history_fp)
     print(f"  [分] {minute_key}  O={snapshot['open']} H={snapshot['high']} L={snapshot['low']} C={close_price} V={minute_vol}")
+    return snapshot
 
 
-def start_realtime(stock_code, duration_seconds=0):
+def start_realtime(stock_code, duration_seconds=0, transport=None):
     """
     实时3秒采集 + 每分钟精确快照写入历史文件。
 
@@ -232,10 +288,16 @@ def start_realtime(stock_code, duration_seconds=0):
                 if minute_key != last_minute_key:
                     # 跨分钟了：结算上一分钟的快照
                     if last_minute_key != "" and curr_minute_samples:
-                        commit_minute_kline(
+                        snapshot = commit_minute_kline(
                             history, history_fp, last_minute_key, now,
                             curr_minute_samples,
                         )
+                        if transport and snapshot:
+                            try:
+                                responses = send_bars_to_fpga(stock_code, [snapshot], transport)
+                                append_fpga_results(stock_code, responses)
+                            except (ValidationError, TransportTimeoutError) as exc:
+                                print(f"  [!] FPGA发送失败: {exc}")
                     # 重置
                     curr_minute_samples = []
 
@@ -261,10 +323,16 @@ def start_realtime(stock_code, duration_seconds=0):
 
     # 结束时结算最后一分钟
     if curr_minute_samples:
-        commit_minute_kline(
+        snapshot = commit_minute_kline(
             history, history_fp, last_minute_key, datetime.now(),
             curr_minute_samples,
         )
+        if transport and snapshot:
+            try:
+                responses = send_bars_to_fpga(stock_code, [snapshot], transport)
+                append_fpga_results(stock_code, responses)
+            except (ValidationError, TransportTimeoutError) as exc:
+                print(f"  [!] FPGA发送失败: {exc}")
 
     print(f"\n[实时完成] 共采集 {count} 次")
     print(f"          实时窗口: {len(realtime_window)} 条")
@@ -279,23 +347,36 @@ def run(stock_codes=None, duration_seconds=0):
         stock_codes = STOCK_LIST
 
     codes = [s.strip().zfill(6) for s in stock_codes]
+    transport = build_transport()
 
-    for code in codes:
-        print(f"\n{'='*55}")
-        print(f"  {code}  第一步：尝试获取今日历史分钟K线")
-        print(f"{'='*55}")
+    try:
+        for code in codes:
+            print(f"\n{'='*55}")
+            print(f"  {code}  第一步：尝试获取今日历史分钟K线")
+            print(f"{'='*55}")
 
-        history = try_fetch_today_kline(code)
-        fp = os.path.join(OUTPUT_DIR, f"{code}_daily_minute.json")
+            history = try_fetch_today_kline(code)
+            fp = os.path.join(OUTPUT_DIR, f"{code}_daily_minute.json")
 
-        if history and len(history) > 0:
-            save_json(history, fp)
-            print(f"  -> 获取到今天K线 {len(history)} 条 -> {fp}")
-        else:
-            print(f"  -> 今日分钟K线暂不可用（收盘后自动补齐）")
-            print(f"  -> 实时采集启动后每分钟自动打快照")
+            if history and len(history) > 0:
+                try:
+                    validated_history = validate_kline_sequence(history)
+                    save_json(validated_history, fp)
+                    print(f"  -> 获取到今天K线 {len(validated_history)} 条 -> {fp}")
+                    if transport:
+                        responses = send_bars_to_fpga(code, validated_history, transport)
+                        append_fpga_results(code, responses)
+                        print(f"  -> 已发送历史K线到FPGA: {len(responses)} 条")
+                except ValidationError as exc:
+                    print(f"  [!] 历史K线校验失败: {exc}")
+            else:
+                print(f"  -> 今日分钟K线暂不可用（收盘后自动补齐）")
+                print(f"  -> 实时采集启动后每分钟自动打快照")
 
-        start_realtime(code, duration_seconds=duration_seconds)
+            start_realtime(code, duration_seconds=duration_seconds, transport=transport)
+    finally:
+        if transport:
+            transport.close()
 
     print(f"\n{'='*55}")
     print(f"  全部完成")

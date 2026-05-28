@@ -28,3 +28,11 @@ MAX_KLINE_LEN = 240          # 最多取多少根K线（1分钟周期一天约24
 # ==================== 文件名模板 ====================
 # 输出格式：{code}_daily_minute.json / {code}_real_time_window.json
 # 如果想改路径，把 OUTPUT_DIR 设成 "../data/" 之类即可
+
+# ==================== FPGA UDP 联调参数 ====================
+ENABLE_FPGA_UDP = False
+FPGA_UDP_HOST = "127.0.0.1"
+FPGA_UDP_PORT = 9001
+UDP_TIMEOUT_SECONDS = 1.0
+UDP_MAX_RETRIES = 3
+SAVE_FPGA_RESULTS = True

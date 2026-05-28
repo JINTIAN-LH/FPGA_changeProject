@@ -133,6 +133,42 @@ python test_modules.py
 - 增加日志分级与结构化日志输出
 - 增加 JSON schema 校验，保证 FPGA 侧解析稳定
 
+## 非FPGA闭环（今日可跑）
+
+新增模块：
+
+- `fpga_protocol.py`：上/下行帧编解码（48B/44B）+ CRC32
+- `data_validator.py`：K线字段、数值范围、时间单调性校验
+- `udp_transport.py`：UDP 收发、超时重试、统计计数
+- `indicators.py`：Python 参考指标（MA/RSI/MACD/ATR/量比）
+- `mock_fpga.py`：本地 UDP Mock FPGA 服务
+- `e2e_runner.py`：端到端脚本（读取历史 JSON -> 发包 -> 收包）
+- `test_protocol.py`：协议单元测试
+- `test_validator.py` / `test_udp_transport.py` / `test_run_all_protocol.py` / `test_contract_snapshot.py`：非FPGA闭环回归测试
+
+快速验证：
+
+```powershell
+# 1) 协议单测
+python -m unittest -v test_protocol.py
+
+# 2) 完整回归测试
+python -m unittest -v test_protocol.py test_validator.py test_udp_transport.py test_run_all_protocol.py test_contract_snapshot.py
+
+# 3) 一键端到端（自动启动 mock）
+python e2e_runner.py --code 000858 --start-mock --limit 20
+```
+
+说明：
+
+- 当前协议实现已按 ICD V1.0 与数据字典 V1.0 对齐：`0xAA55/0x55AA`、`char[8]` 股票代码、`MA5/MA10/RSI6/RSI14`、`trade_signal/signal_strength`。
+- 图片/PDF 已转出为可检索 Markdown：
+  - `doc/通信协议接口控制文档 (ICD)/通信协议接口控制文档 (ICD).md`
+  - `doc/数据字典/数据字典.md`
+- 机器可读契约快照：`doc/protocol_contract_v1.json`
+- `run_all.py` 已支持可选 FPGA UDP 下发；相关开关在 `config.py`：`ENABLE_FPGA_UDP`、`FPGA_UDP_HOST`、`FPGA_UDP_PORT`、`UDP_TIMEOUT_SECONDS`、`UDP_MAX_RETRIES`。
+- 后续如 ICD 版本升级，可优先修改 `fpga_protocol.py` 的字段映射实现，不影响采集和测试脚本调用方式。
+
 ## 许可
 
 仅用于学习与项目研究，行情数据以数据源官方条款为准。
