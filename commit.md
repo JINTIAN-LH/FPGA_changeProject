@@ -104,3 +104,13 @@
   - 将 `fpga_side/rtl/README.md` 从英文改为中文说明
   - 保留原有结构并增强小白可读性（目录解释、里程碑、仿真命令、通过标准）
   - 与现有目录结构 `host_side/fpga_side` 保持一致
+
+### 10) chore: restructure doc directory and full project sync
+
+- Commit: pending
+- Branch: main
+- Scope:
+  - 按最新组织方式重构 `doc` 目录内容与文档命名
+  - 同步清理旧版文档派生产物（历史 PDF/PNG）并纳入新版文档入口
+  - 将工程结构变更（`host_side` / `fpga_side`）做全量提交落库
+  - 保持 README 与文档导航对齐到当前目录结构

@@ -1,0 +1,8 @@
+0.6
+2019.1
+May 24 2019
+15:06:07
+D:/FPGADevelopMent/fpga_exchangeSerdes/fpga_side/rtl/sim/fpga_exchange_serdes_xsim/fpga_exchange_serdes_xsim.sim/sim_1/behav/xsim/glbl.v,1558713910,verilog,,,,glbl,,,,,,,,
+D:/FPGADevelopMent/fpga_exchangeSerdes/fpga_side/rtl/src/m1_protocol_core.v,1780133440,verilog,,D:/FPGADevelopMent/fpga_exchangeSerdes/fpga_side/rtl/tb/tb_system_mixed.v,,m1_protocol_core,,,,,,,,
+D:/FPGADevelopMent/fpga_exchangeSerdes/fpga_side/rtl/tb/tb_system_mixed.v,1780133251,verilog,,,,tb_system_mixed,,,,,,,,
+D:/FPGADevelopMent/fpga_exchangeSerdes/fpga_side/rtl/tb/tb_top.v,1780133251,verilog,,,,tb_top,,,,,,,,
