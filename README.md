@@ -23,6 +23,7 @@
 │  └─ data/     # 样例输出数据
 ├─ fpga_side/
 │  ├─ rtl/      # Verilog/TB/XDC/仿真工程
+│  ├─ docs/     # FPGA 侧成果文档
 │  ├─ scripts/  # Vivado 批脚本
 │  └─ logs/     # Vivado 运行日志
 ├─ doc/         # 文档中心
@@ -84,6 +85,7 @@ python host_side/app/acceptance_injection.py --host 127.0.0.1 --port 19011 --cod
 5. doc/VSCode到Vivado迁移操作手册.md
 6. doc/全链条开发实施计划_v2.md
 7. doc/任务与分工总表.md
+8. fpga_side/docs/README.md
 
 ## 当前已完成能力（简版）
 

@@ -114,3 +114,12 @@
   - 同步清理旧版文档派生产物（历史 PDF/PNG）并纳入新版文档入口
   - 将工程结构变更（`host_side` / `fpga_side`）做全量提交落库
   - 保持 README 与文档导航对齐到当前目录结构
+
+### 11) chore: move fpga-side member deliverables into fpga_side/docs
+
+- Commit: pending
+- Branch: main
+- Scope:
+  - 将组员五、组员六的成果 `.docx` 从 `doc/` 移入 `fpga_side/docs/`
+  - 为 FPGA 侧成果文档新增按成员分类的目录，便于定位与归档
+  - 更新根 `README.md` 的目录树与文档导航，明确 `fpga_side/docs/README.md` 入口
