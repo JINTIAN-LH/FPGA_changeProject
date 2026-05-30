@@ -1,9 +1,11 @@
 `timescale 1ns/1ps
 
 module m1_protocol_core #(
-    parameter [15:0] MA5_PLACEHOLDER  = 16'h0000,
-    parameter [15:0] MA10_PLACEHOLDER = 16'h0000,
-    parameter [15:0] RSI_PLACEHOLDER  = 16'h0000
+    parameter [31:0] MA5_PLACEHOLDER             = 32'h00000000,
+    parameter [31:0] MA10_PLACEHOLDER            = 32'h00000000,
+    parameter [31:0] RSI_PLACEHOLDER             = 32'h00000000,
+    parameter [7:0]  TRADE_SIGNAL_PLACEHOLDER    = 8'd0,
+    parameter [7:0]  SIGNAL_STRENGTH_PLACEHOLDER = 8'd0
 ) (
     input  wire       clk,
     input  wire       rst_n,
@@ -13,6 +15,13 @@ module m1_protocol_core #(
     input  wire       rx_last,
 
     input  wire       tx_ready,
+    input  wire       indicator_valid,
+    input  wire [31:0] ma5_value,
+    input  wire [31:0] ma10_value,
+    input  wire [31:0] rsi6_value,
+    input  wire [31:0] rsi14_value,
+    input  wire [7:0] trade_signal_value,
+    input  wire [7:0] signal_strength_value,
     output reg        tx_valid,
     output reg  [7:0] tx_data,
     output reg        tx_last,
@@ -143,28 +152,28 @@ always @(posedge clk or negedge rst_n) begin
                             dn_buf[14] = up_buf[14];
                             dn_buf[15] = up_buf[15];
 
-                            dn_buf[16] = MA5_PLACEHOLDER[15:8];
-                            dn_buf[17] = MA5_PLACEHOLDER[7:0];
-                            dn_buf[18] = MA10_PLACEHOLDER[15:8];
-                            dn_buf[19] = MA10_PLACEHOLDER[7:0];
+                            dn_buf[16] = indicator_valid ? ma5_value[31:24] : MA5_PLACEHOLDER[31:24];
+                            dn_buf[17] = indicator_valid ? ma5_value[23:16] : MA5_PLACEHOLDER[23:16];
+                            dn_buf[18] = indicator_valid ? ma5_value[15:8]  : MA5_PLACEHOLDER[15:8];
+                            dn_buf[19] = indicator_valid ? ma5_value[7:0]   : MA5_PLACEHOLDER[7:0];
 
-                            dn_buf[20] = RSI_PLACEHOLDER[15:8];
-                            dn_buf[21] = RSI_PLACEHOLDER[7:0];
-                            dn_buf[22] = 8'h00;
-                            dn_buf[23] = 8'h00;
+                            dn_buf[20] = indicator_valid ? ma10_value[31:24] : MA10_PLACEHOLDER[31:24];
+                            dn_buf[21] = indicator_valid ? ma10_value[23:16] : MA10_PLACEHOLDER[23:16];
+                            dn_buf[22] = indicator_valid ? ma10_value[15:8]  : MA10_PLACEHOLDER[15:8];
+                            dn_buf[23] = indicator_valid ? ma10_value[7:0]   : MA10_PLACEHOLDER[7:0];
 
-                            dn_buf[24] = 8'h00;
-                            dn_buf[25] = 8'h00;
-                            dn_buf[26] = 8'h00;
-                            dn_buf[27] = 8'h00;
+                            dn_buf[24] = indicator_valid ? rsi6_value[31:24] : RSI_PLACEHOLDER[31:24];
+                            dn_buf[25] = indicator_valid ? rsi6_value[23:16] : RSI_PLACEHOLDER[23:16];
+                            dn_buf[26] = indicator_valid ? rsi6_value[15:8]  : RSI_PLACEHOLDER[15:8];
+                            dn_buf[27] = indicator_valid ? rsi6_value[7:0]   : RSI_PLACEHOLDER[7:0];
 
-                            dn_buf[28] = 8'h00;
-                            dn_buf[29] = 8'h00;
-                            dn_buf[30] = 8'h00;
-                            dn_buf[31] = 8'h00;
+                            dn_buf[28] = indicator_valid ? rsi14_value[31:24] : RSI_PLACEHOLDER[31:24];
+                            dn_buf[29] = indicator_valid ? rsi14_value[23:16] : RSI_PLACEHOLDER[23:16];
+                            dn_buf[30] = indicator_valid ? rsi14_value[15:8]  : RSI_PLACEHOLDER[15:8];
+                            dn_buf[31] = indicator_valid ? rsi14_value[7:0]   : RSI_PLACEHOLDER[7:0];
 
-                            dn_buf[32] = 8'h00;
-                            dn_buf[33] = 8'h00;
+                            dn_buf[32] = indicator_valid ? trade_signal_value : TRADE_SIGNAL_PLACEHOLDER;
+                            dn_buf[33] = indicator_valid ? signal_strength_value : SIGNAL_STRENGTH_PLACEHOLDER;
 
                             dn_buf[34] = 8'h00;
                             dn_buf[35] = 8'h00;

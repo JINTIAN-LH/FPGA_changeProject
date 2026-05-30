@@ -1,7 +1,7 @@
-﻿# 通信协议接口控制文档 (ICD)（小白执行版）
+﻿# 通信协议接口控制文档 (ICD)（统一架构版）
 
 文档编号：FPGA-QT-01-002  
-版本：V1.1  
+版本：V1.2  
 日期：2026-05-30
 
 ## 1. 这份文档的作用
@@ -50,16 +50,16 @@
 | 2 | 2 | frame_len | 固定 0x002C（44） |
 | 4 | 8 | stock_code | 回显上行代码 |
 | 12 | 4 | timestamp | 回显上行时间 |
-| 16 | 4 | ma5 | float32（M1.1 可先占位） |
-| 20 | 4 | ma10 | float32（M1.1 可先占位） |
-| 24 | 4 | rsi6 | float32（M1.1 可先占位） |
-| 28 | 4 | rsi14 | float32（M1.1 可先占位） |
+| 16 | 4 | ma5 | float32 |
+| 20 | 4 | ma10 | float32 |
+| 24 | 4 | rsi6 | float32 |
+| 28 | 4 | rsi14 | float32 |
 | 32 | 1 | trade_signal | 0/1/2 |
 | 33 | 1 | signal_strength | 0-100 |
 | 34 | 6 | reserved | 预留，当前填 0 |
 | 40 | 4 | crc32 | 对 [0..39] 计算 CRC32 |
 
-## 5. M1.1 调试信号（FPGA内部）
+## 5. 调试信号（FPGA内部）
 
 `frame_reject_reason` 约定：
 
@@ -95,3 +95,11 @@
 3. Python 协议实现
 4. FPGA 协议实现
 5. 对应测试
+
+## 9. 当前实现对应
+
+1. Python 协议实现：`host_side/app/fpga_protocol.py`
+2. FPGA 协议核：`fpga_side/rtl/src/m1_protocol_core.v`
+3. 协议相关 TB：`fpga_side/rtl/tb/tb_top.v`（模块名 `tb_m1_protocol_core`）
+
+说明：若实现与本文档冲突，以本文档为准并立即修正实现。

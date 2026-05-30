@@ -19,7 +19,10 @@ if {[file exists "./fpga_side/rtl/src"]} {
 
 # Add testbench files.
 if {[file exists "./fpga_side/rtl/tb"]} {
-  set tb_files [glob -nocomplain ./fpga_side/rtl/tb/*.v]
+  set tb_files [concat \
+    [glob -nocomplain ./fpga_side/rtl/tb/*.v] \
+    [glob -nocomplain ./fpga_side/rtl/tb/*.sv] \
+  ]
   if {[llength $tb_files] > 0} {
     add_files -fileset sim_1 $tb_files
   }
@@ -36,7 +39,7 @@ if {[file exists "./fpga_side/rtl/constraints"]} {
 # If a testbench top exists, run simulation.
 set tb_top "tb_top"
 if {[llength [get_files -quiet -all -of_objects [get_filesets sim_1]]] > 0} {
-  foreach tb_name {tb_top tb_system_mixed} {
+  foreach tb_name {tb_score_calc tb_indicator_top tb_udp_result_tx tb_top tb_m1_protocol_core tb_system_mixed} {
     puts "Running simulation top=${tb_name}"
     set_property top ${tb_name} [get_filesets sim_1]
     launch_simulation -simset sim_1 -mode behavioral

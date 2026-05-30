@@ -123,3 +123,14 @@
   - 将组员五、组员六的成果 `.docx` 从 `doc/` 移入 `fpga_side/docs/`
   - 为 FPGA 侧成果文档新增按成员分类的目录，便于定位与归档
   - 更新根 `README.md` 的目录树与文档导航，明确 `fpga_side/docs/README.md` 入口
+
+### 12) feat: integrate protocol-indicator top wiring and refresh documentation baseline
+
+- Commit: pending
+- Branch: main
+- Scope:
+  - 完成系统级接线：在 `fpga_side/rtl/src/top.v` 内实连 `m1_protocol_core` 与 `indicator_top` 指标输出
+  - 升级 `fpga_side/rtl/src/m1_protocol_core.v` 下行字段映射，按 ICD 回包结构输出指标/信号字段
+  - 更新 `fpga_side/rtl/tb/tb_system_mixed.v` 与 `fpga_side/rtl/tb/tb_top.sv` 以匹配新接口并增强映射校验
+  - 执行并通过关键闭环仿真：`tb_m1_protocol_core`、`tb_system_mixed`、`tb_top`
+  - 全量更新项目文档入口与百科说明，清理临时/过期文档并补齐 `doc/README.md`

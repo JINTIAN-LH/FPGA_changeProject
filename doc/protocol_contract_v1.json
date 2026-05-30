@@ -17,7 +17,7 @@
     ]
   },
   "downstream": {
-    "header": "0x55AA",
+    "header": "0xAA55",
     "length": 44,
     "fields": [
       {"name": "stock_code", "type": "char[8]", "offset": 4, "size": 8},

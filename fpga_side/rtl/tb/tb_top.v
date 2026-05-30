@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module tb_top;
+module tb_m1_protocol_core;
     reg clk;
     reg rst_n;
     reg rx_valid;
@@ -28,6 +28,13 @@ module tb_top;
         .rx_data(rx_data),
         .rx_last(rx_last),
         .tx_ready(tx_ready),
+        .indicator_valid(1'b0),
+        .ma5_value(32'h00000000),
+        .ma10_value(32'h00000000),
+        .rsi6_value(32'h00000000),
+        .rsi14_value(32'h00000000),
+        .trade_signal_value(8'd0),
+        .signal_strength_value(8'd0),
         .tx_valid(tx_valid),
         .tx_data(tx_data),
         .tx_last(tx_last),

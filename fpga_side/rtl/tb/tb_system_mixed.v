@@ -27,6 +27,15 @@ module tb_system_mixed;
     integer response_len_err;
     integer test_fail;
     integer resp_bytes;
+    reg [7:0] resp [0:43];
+
+    reg        indicator_valid;
+    reg [31:0] ma5_value;
+    reg [31:0] ma10_value;
+    reg [31:0] rsi6_value;
+    reg [31:0] rsi14_value;
+    reg [7:0]  trade_signal_value;
+    reg [7:0]  signal_strength_value;
 
     localparam [2:0] REJ_HEADER = 3'd1;
     localparam [2:0] REJ_LENGTH = 3'd2;
@@ -38,9 +47,9 @@ module tb_system_mixed;
     localparam integer CASE_BAD_CRC    = 3;
 
     m1_protocol_core #(
-        .MA5_PLACEHOLDER(16'h0011),
-        .MA10_PLACEHOLDER(16'h0022),
-        .RSI_PLACEHOLDER(16'h0033)
+        .MA5_PLACEHOLDER(32'h00000000),
+        .MA10_PLACEHOLDER(32'h00000000),
+        .RSI_PLACEHOLDER(32'h00000000)
     ) dut (
         .clk(clk),
         .rst_n(rst_n),
@@ -48,6 +57,13 @@ module tb_system_mixed;
         .rx_data(rx_data),
         .rx_last(rx_last),
         .tx_ready(tx_ready),
+        .indicator_valid(indicator_valid),
+        .ma5_value(ma5_value),
+        .ma10_value(ma10_value),
+        .rsi6_value(rsi6_value),
+        .rsi14_value(rsi14_value),
+        .trade_signal_value(trade_signal_value),
+        .signal_strength_value(signal_strength_value),
         .tx_valid(tx_valid),
         .tx_data(tx_data),
         .tx_last(tx_last),
@@ -168,6 +184,9 @@ module tb_system_mixed;
         for (cyc = 0; cyc < 120; cyc = cyc + 1) begin
             @(posedge clk);
             if (tx_valid) begin
+                if (resp_bytes < 44) begin
+                    resp[resp_bytes] = tx_data;
+                end
                 resp_bytes = resp_bytes + 1;
             end
             if (tx_last && (resp_bytes != 44)) begin
@@ -197,6 +216,26 @@ module tb_system_mixed;
                 $display("[FAIL] response bytes=%0d expected=44", resp_bytes);
                 test_fail = 1;
             end
+            if (resp[16] != ma5_value[31:24] || resp[17] != ma5_value[23:16] || resp[18] != ma5_value[15:8] || resp[19] != ma5_value[7:0]) begin
+                $display("[FAIL] MA5 mapping mismatch");
+                test_fail = 1;
+            end
+            if (resp[20] != ma10_value[31:24] || resp[21] != ma10_value[23:16] || resp[22] != ma10_value[15:8] || resp[23] != ma10_value[7:0]) begin
+                $display("[FAIL] MA10 mapping mismatch");
+                test_fail = 1;
+            end
+            if (resp[24] != rsi6_value[31:24] || resp[25] != rsi6_value[23:16] || resp[26] != rsi6_value[15:8] || resp[27] != rsi6_value[7:0]) begin
+                $display("[FAIL] RSI6 mapping mismatch");
+                test_fail = 1;
+            end
+            if (resp[28] != rsi14_value[31:24] || resp[29] != rsi14_value[23:16] || resp[30] != rsi14_value[15:8] || resp[31] != rsi14_value[7:0]) begin
+                $display("[FAIL] RSI14 mapping mismatch");
+                test_fail = 1;
+            end
+            if (resp[32] != trade_signal_value || resp[33] != signal_strength_value) begin
+                $display("[FAIL] signal mapping mismatch");
+                test_fail = 1;
+            end
             response_count = response_count + 1;
         end else begin
             if (resp_bytes != 0) begin
@@ -216,6 +255,13 @@ module tb_system_mixed;
         rx_data  = 8'h00;
         rx_last  = 1'b0;
         tx_ready = 1'b1;
+        indicator_valid = 1'b1;
+        ma5_value = 32'h3F800000;
+        ma10_value = 32'h40000000;
+        rsi6_value = 32'h40400000;
+        rsi14_value = 32'h40800000;
+        trade_signal_value = 8'd3;
+        signal_strength_value = 8'd88;
 
         good_count = 0;
         bad_header_count = 0;
