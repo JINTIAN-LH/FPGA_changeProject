@@ -11,7 +11,8 @@
 5. `FPGA 模块详细设计.md`：RTL 侧模块设计说明
 6. `Python 模块详细设计.md`：上位机模块设计说明
 7. `MA703FA_FPGAEncyclopedia.md`：项目快速总览（新人 30 分钟上手）
-8. `protocol_contract_v1.json`：协议契约快照
+8. `MA703FA_APP_1G_UDP_PCS_Ethernet_SFP1_百科全书.md`：参考工程内部结构与使用说明
+9. `protocol_contract_v1.json`：协议契约快照
 
 ## 维护规则
 

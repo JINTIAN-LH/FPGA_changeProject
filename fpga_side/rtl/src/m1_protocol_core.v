@@ -75,7 +75,7 @@ begin
 end
 endfunction
 
-always @(posedge clk or negedge rst_n) begin
+always @(posedge clk) begin
     if (!rst_n) begin
         rx_idx          <= 6'd0;
         rx_active       <= 1'b0;

@@ -75,9 +75,9 @@ python -m unittest -v host_side/tests/test_protocol.py host_side/tests/test_vali
 
 ```yaml
 network:
-  local_ip: "192.168.1.100"
+  local_ip: "192.168.100.104"
   local_port: 5000
-  fpga_ip: "192.168.1.101"
+  fpga_ip: "169.254.0.118"
   fpga_port: 5001
   timeout: 1.0
   max_retries: 3

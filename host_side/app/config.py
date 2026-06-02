@@ -30,13 +30,13 @@ MAX_KLINE_LEN = 240          # 最多取多少根K线（1分钟周期一天约24
 # 如果想改路径，把 OUTPUT_DIR 设成 "../data/" 之类即可
 
 # ==================== FPGA UDP 联调参数 ====================
-ENABLE_FPGA_UDP = False
-FPGA_UDP_MODE = "mock"  # "mock" | "real"
+ENABLE_FPGA_UDP = True  # “True”表示启用 FPGA UDP 联调功能（默认 False，避免误连真实硬件）
+FPGA_UDP_MODE = "real"  # "mock" | "real"
 
 # ICD defaults for real hardware link.
-FPGA_REAL_UDP_HOST = "192.168.1.101"
+FPGA_REAL_UDP_HOST = "169.254.0.118"
 FPGA_REAL_UDP_PORT = 5001
-PC_REAL_BIND_HOST = "192.168.1.100"
+PC_REAL_BIND_HOST = "192.168.100.104"
 PC_REAL_BIND_PORT = 5000
 
 # Local loopback defaults for software-only verification.

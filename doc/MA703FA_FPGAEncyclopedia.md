@@ -8,6 +8,7 @@
 2. 跑通上位机 12 项协议测试（不需要 FPGA 硬件）
 3. 在 Vivado 2019 里从零建工程、加文件、跑仿真、看波形
 4. 看懂系统闭环，知道改代码该改哪里、改了之后该跑什么回归
+5. 完成 FPGA 实机烧录，让 FPGA 真正作为高速交易系统的一部分承担运算任务
 
 ---
 
@@ -48,8 +49,9 @@ fpga_exchangeSerdes/
 │  └─ data/               # 样例数据
 ├─ fpga_side/
 │  ├─ rtl/
-│  │   ├─ src/            # Verilog 源码（10 个模块）
-│  │   │   ├─ top.v           ← 统一顶层
+│  │   ├─ src/            # Verilog 源码（含板级与算法级顶层）
+│  │   │   ├─ top_board.v     ← 板级综合/烧录顶层（当前实机主入口）
+│  │   │   ├─ top.v           ← 算法/协议逻辑顶层
 │  │   │   ├─ m1_protocol_core.v ← 协议校验核
 │  │   │   ├─ indicator_top.v ← 指标汇聚
 │  │   │   ├─ ma_calc.v       ← 均线 MA
@@ -67,7 +69,9 @@ fpga_exchangeSerdes/
 │  │       └─ tb_udp_result_tx.sv
 │  ├─ scripts/vivado/    # Vivado TCL 批处理脚本
 │  │   ├─ run_single_tb.tcl  ← 单 TB 独立执行（推荐）
-│  │   └─ run_xsim.tcl       ← 批量执行所有 TB
+│  │   ├─ run_xsim.tcl       ← 批量执行所有 TB
+│  │   ├─ build_bit.tcl      ← 一键综合/实现/报告/bit
+│  │   └─ program_device.tcl ← 一键连接硬件并下载最新 bit
 │  └─ logs/              # 仿真输出日志
 └─ doc/                  # 项目文档（9 份）
     ├─ 产品需求说明书 (PRD).md
@@ -169,13 +173,18 @@ python -m unittest -v host_side/tests/test_protocol.py host_side/tests/test_vali
 
 ---
 
-## 6. FPGA 侧：Vivado 2019 仿真手把手教程
+## 6. FPGA 侧：Vivado 2019 操作手把手教程
 
-FPGA 验证有两条路径：**GUI 手动操作**（适合新人理解流程）和**批处理脚本**（适合回归）。建议先按 GUI 走一遍，之后日常用脚本。
+当前仓库建议固定使用两条路线，不要混用：
+
+1. 路线 A（仿真验证流）：`run_single_tb.tcl` / `run_xsim.tcl`
+2. 路线 B（可烧录验证流）：`build_bit.tcl` -> `program_device.tcl`
+
+其中，路线 A 用于改 RTL 后快速回归；路线 B 用于上板前签核与下载。
 
 ---
 
-### 6.1 方法一：GUI 手动操作（新人必做，理解工程结构）
+### 6.1 路线 A：GUI 仿真验证流（新人必做，理解工程结构）
 
 以下步骤在 Vivado 2019 GUI 中完成。**每个菜单名、按钮名都是准确的，请逐字对照。**
 
@@ -198,11 +207,13 @@ Vivado 启动后会显示 Welcome 界面。
 6. Project Type：选 **"RTL Project"**，**不要**勾选 "Do not specify sources at this time" → Next >
 7. **Add Sources** 页面：点击绿色的 **"+"** 按钮 → **"Add Files"**
    - 浏览到 `fpga_side/rtl/src/`
-   - 全选所有 `.v` 文件（共 10 个）
+   - 全选所有 `.v` 文件（建议直接全选当前目录下全部）
    - 点击 **OK** → 确认 "Copy sources into project" **不勾选**（保持原位引用）
    - 确认 Target language 是 **Verilog**，Simulator language 是 **Mixed**
    - 点击 **Next >**
-8. **Add Constraints** 页面：直接 **Next >**（本项目暂不需要约束文件）
+8. **Add Constraints** 页面：
+   - 如果你当前只做仿真：可以先 **Next >** 跳过。
+   - 如果你后续要上板烧录：这里必须加入 `.xdc` 约束文件（管脚、电平、时钟约束），否则 bitstream 即使生成也大概率无法在板上正常工作。
 9. **Default Part** 页面：
    - 在搜索框输入 `xc7a100tfgg484-2`
    - 选中搜索结果 → 点击 **Next >**
@@ -273,7 +284,7 @@ Vivado 启动后会显示 Welcome 界面。
 
 ---
 
-### 6.2 方法二：TCL 批处理脚本（日常回归，一键跑完）
+### 6.2 路线 A：批处理仿真流（日常回归）
 
 配置好环境变量后，一行命令跑一个 TB：
 
@@ -303,9 +314,44 @@ single tb done: tb_xxxxx
 5. 启动 behavioral simulation，编译并运行
 6. 仿真结束后关闭工程
 
+### 6.3 路线 B：GUI 可烧录验证流（综合->实现->时序->bit）
+
+这条流程用于回答“是否可上板烧录”。
+
+1. 打开工程后，确认顶层模块是 `top_board`。
+2. Add Sources -> Add or create constraints，加入 `fpga_side/rtl/constraints/*.xdc`。
+3. 运行 Run Synthesis。
+4. 运行 Run Implementation。
+5. 查看 Report DRC、Report Timing Summary、Report Clock Interaction。
+6. 只有时序和 DRC 通过后，执行 Generate Bitstream。
+
+可烧录判定最小标准：
+
+1. WNS >= 0
+2. TNS = 0
+3. 无阻塞级 DRC 错误
+4. bit 文件成功生成
+
+### 6.4 路线 B：批处理烧录流（推荐实际执行）
+
+推荐固定按下面顺序执行，不要跳步：
+
+```powershell
+# 1) 构建并导出报告
+vivado -mode batch -source fpga_side/scripts/vivado/build_bit.tcl -tclargs top_board xc7a100tfgg484-2 8
+
+# 2) 下载最新 bit 到首个检测到的器件
+vivado -mode batch -source fpga_side/scripts/vivado/program_device.tcl
+```
+
+VS Code 中对应任务：
+
+1. `Vivado: build bitstream (top_board)`
+2. `Vivado: program device (latest bit)`
+
 ---
 
-### 6.3 六个 TB 都在测什么
+### 6.5 六个 TB 都在测什么
 
 | TB 文件 | 仿真顶层 | 测试场景 | 期望结果 |
 |---------|----------|----------|----------|
@@ -340,7 +386,379 @@ flowchart LR
 
 ---
 
-## 8. 常见踩坑与解决方案
+## 8. 实机验证：烧录、联机、上位机展示
+
+这一节讲的是“真正把 FPGA 放进系统里干活”，不是只跑仿真。目标很明确：先把 bitstream 烧录到板子上，再让上位机持续发行情帧，FPGA 负责完成协议校验、指标计算和信号打分，最后在上位机和网页上看到有意义的输入输出展示。
+
+### 8.1 实机验证的最小闭环
+
+实机验证不是先追求花哨界面，而是先把这条链跑通：
+
+```mermaid
+flowchart LR
+   A[上位机 Python<br/>采集/读取行情] --> B[UDP 上行帧<br/>48B]
+   B --> C[FPGA 板卡<br/>协议校验 + 指标运算]
+   C --> D[UDP 下行帧<br/>44B]
+   D --> E[上位机展示层<br/>命令行 + 网页]
+```
+
+你需要看到的不是“有回包”这么简单，而是下面这三件事同时成立：
+
+1. 上位机发出去的输入是合理的，股票代码、时间戳、OHLCV 都正常。
+2. FPGA 回来的输出是合理的，MA、RSI、交易信号、强度都在可解释范围内。
+3. 网页展示能把输入、输出、状态、历史趋势放在同一个界面里，方便你盯盘和排障。
+
+### 8.2 实机烧录前先确认什么
+
+烧录之前，先确认这几项：
+
+1. Vivado 2019 安装正常，命令行可以启动。
+2. 板卡已正确连接 JTAG，供电正常。
+3. 以太网线连接到 FPGA 口，主机 IP 是 `192.168.100.104`，FPGA 目标 IP 是 `169.254.0.118`。
+4. 上位机配置里 `FPGA_UDP_MODE = "real"`，并且 `ENABLE_FPGA_UDP = True`。
+5. 你已经能跑通至少一次仿真，确认 RTL 逻辑没问题。
+6. `fpga_side/rtl/constraints/` 目录中已经准备好板级 `.xdc` 约束文件（至少包含时钟管脚、复位管脚、UDP/GMII/RGMII 相关 IO 管脚和 IOSTANDARD）。
+
+> 关键提醒：仿真可以不依赖约束文件，但实机烧录必须依赖约束文件。没有正确的 `.xdc`，你会遇到“能烧录但不工作”或“实现阶段失败”的典型问题。
+
+### 8.2.1 约束文件最小清单（实机必须）
+
+在实机模式下，建议把约束按下面最小清单补齐：
+
+1. 主时钟：`PACKAGE_PIN`、`IOSTANDARD`、`create_clock`。
+2. 复位信号：管脚、电平定义（必要时加上下拉/上拉）。
+3. 以太网接口相关 IO：TX/RX、控制信号、时钟信号的管脚与电平。
+4. 关键异步时钟组：必要时添加 `set_clock_groups -asynchronous`。
+5. 外设状态/调试 IO（如 LED）：用于快速判断板上状态。
+
+约束文件建议放在：`fpga_side/rtl/constraints/board_real.xdc`
+
+可用的骨架示例（管脚名需按你的开发板手册替换）：
+
+```tcl
+## Clock
+set_property PACKAGE_PIN <CLK_PIN> [get_ports sys_clk]
+set_property IOSTANDARD LVCMOS33 [get_ports sys_clk]
+create_clock -period 10.000 -name sys_clk -waveform {0.000 5.000} [get_ports sys_clk]
+
+## Reset
+set_property PACKAGE_PIN <RST_PIN> [get_ports rst_n]
+set_property IOSTANDARD LVCMOS33 [get_ports rst_n]
+
+## Example Ethernet IO (replace with your board pinout)
+set_property PACKAGE_PIN <ETH_TXD0_PIN> [get_ports eth_txd[0]]
+set_property IOSTANDARD LVCMOS33 [get_ports eth_txd[0]]
+
+set_property PACKAGE_PIN <ETH_RXD0_PIN> [get_ports eth_rxd[0]]
+set_property IOSTANDARD LVCMOS33 [get_ports eth_rxd[0]]
+```
+
+### 8.3 Vivado 实机烧录手把手步骤
+
+下面是把 FPGA 真正变成系统运算单元的推荐流程。这里以 Vivado 2019 为例，步骤尽量按按钮顺序写。
+
+#### 步骤 1：打开工程
+
+1. 启动 Vivado 2019。
+2. 打开已有工程，或者按仿真章节的方法创建工程。
+3. 确认顶层是 `top_board.v`（对应模块 `top_board`），不是测试平台 `tb_*`。
+
+#### 步骤 1.5：先把约束文件加进工程（实机烧录必做）
+
+1. 在 **Flow Navigator** 中点击 **Add Sources**。
+2. 选择 **Add or create constraints**。
+3. 点击 **Add Files**，选中 `fpga_side/rtl/constraints/*.xdc`。
+4. 在 **Constraints** 视图检查是否已被识别到 `constrs_1`。
+5. 若有多个 `.xdc`，确认当前实机用的是板卡对应版本，避免混用。
+
+#### 步骤 2：切到综合/实现流程
+
+1. 在左侧 Flow Navigator 里找到 **SYNTHESIS**。
+2. 点击 **Run Synthesis**。
+3. 通过后点击 **Run Implementation**。
+4. 如果实现失败，先看约束、时钟、端口名是否和顶层一致。
+
+#### 步骤 3：生成 bitstream
+
+1. 实现完成后点击 **Generate Bitstream**。
+2. 等待 Vivado 生成 `.bit` 文件。
+3. 如果报错，优先看时序收敛、端口约束和综合警告。
+
+#### 步骤 4：连接硬件并烧录
+
+1. 用 JTAG 线连接开发板和电脑。
+2. 打开 **Open Hardware Manager**。
+3. 点击 **Open Target** → **Auto Connect**。
+4. 选择目标器件。
+5. 右键目标器件，选择 **Program Device**。
+6. 在弹窗里选中刚生成的 `.bit` 文件，确认后开始烧录。
+
+#### 步骤 5：上电联机检查
+
+1. 烧录成功后，确认 FPGA 端口状态正常。
+2. 在上位机上启动实机模式。
+3. 持续发送几条行情帧，观察回包是否稳定。
+4. 如果板卡上有 LED、状态灯或 ILA，确认它们和协议状态一致。
+
+### 8.3.1 可烧录性验证全流程（综合 -> 实现 -> 时序 -> bit）
+
+这一节是实操版标准流程，目标是回答一个问题：
+
+"这份工程现在能不能安全上板烧录？"
+
+你需要按顺序完成四个阶段，每个阶段都有明确通过标准。
+
+#### 阶段 A：综合（Run Synthesis）
+
+GUI 路径：
+1. 左侧 Flow Navigator -> SYNTHESIS -> Run Synthesis
+2. 结束后点 Open Synthesized Design
+3. 打开 Reports -> Report Utilization
+
+检查项：
+1. 无 Critical Warning 对应到顶层端口缺失/位宽错连。
+2. 资源占用（LUT/FF/BRAM/DSP）没有明显异常突增。
+3. 顶层必须是 top_board（不是 tb_*）。
+
+不通过时优先排查：
+1. 顶层误设成 testbench。
+2. 新增 RTL 文件未加入 sources_1。
+3. 端口名与 XDC 约束不一致。
+
+#### 阶段 B：实现（Run Implementation）
+
+GUI 路径：
+1. Flow Navigator -> IMPLEMENTATION -> Run Implementation
+2. 结束后点 Open Implemented Design
+3. 先看 Report DRC，再看时序总结
+
+检查项：
+1. DRC 无阻塞级错误（如 NSTD/UCIO/电压冲突）。
+2. IO Bank 电压与 IOSTANDARD 一致。
+3. 未出现关键布线失败（Place/Route failed）。
+
+不通过时优先排查：
+1. XDC 中 pin 或 IOSTANDARD 写错。
+2. 多个约束文件重复约束同一端口。
+3. 板级引脚与工程顶层端口名称不一致。
+
+#### 阶段 C：时序检查（Timing Signoff）
+
+在 implemented design 里执行：
+1. Reports -> Report Timing Summary
+2. Reports -> Report Clock Interaction
+3. Reports -> Report CDC（若可用）
+
+最小通过标准：
+1. WNS >= 0.000 ns
+2. TNS = 0.000 ns
+3. 无未约束关键路径（Unconstrained paths 为 0，或确认仅为无害测试路径）
+4. 跨时钟域路径已通过异步时钟组或 CDC 结构正确隔离
+
+当前工程重点关注时钟域：
+1. sys_clk_50m
+2. etha_rxck（RGMII 口相关）
+3. ethb_rxck（若启用）
+
+若时序不收敛，处理顺序建议：
+1. 先修约束，再修 RTL。
+2. 优先检查 create_clock 与 set_clock_groups。
+3. 再定位高扇出/长组合路径并插寄存器。
+
+#### 阶段 D：生成 bit（Generate Bitstream）
+
+GUI 路径：
+1. Flow Navigator -> PROGRAM AND DEBUG -> Generate Bitstream
+2. 完成后在 run 目录确认 bit 文件已生成
+
+结果文件通常位于：
+1. 工程目录下的 runs/impl_1/*.bit
+
+只有在 A/B/C 三阶段都通过后，才建议进入烧录。
+
+### 8.3.2 命令行一键版（推荐回归）
+
+如果你更习惯批处理，可以在 Vivado Tcl Console 或 batch 模式执行下面命令。
+
+```tcl
+# 1) 综合
+launch_runs synth_1 -jobs 8
+wait_on_run synth_1
+
+# 2) 实现直到写 bit
+launch_runs impl_1 -to_step write_bitstream -jobs 8
+wait_on_run impl_1
+
+# 3) 输出关键报告
+open_run impl_1
+report_timing_summary -file impl_timing_summary.rpt -delay_type max -max_paths 20
+report_drc -file impl_drc.rpt
+report_clock_interaction -file impl_clock_interaction.rpt
+```
+
+命令行验收标准：
+1. impl_timing_summary.rpt 中 WNS 非负且 TNS 为 0。
+2. impl_drc.rpt 无 ERROR 级阻塞问题。
+3. 生成 bit 文件成功。
+
+#### 项目内现成一键脚本（推荐直接用）
+
+本仓库已提供可直接运行的脚本：
+
+1. `fpga_side/scripts/vivado/build_bit.tcl`
+
+PowerShell 执行示例：
+
+```powershell
+vivado -mode batch -source fpga_side/scripts/vivado/build_bit.tcl -tclargs top_board xc7a100tfgg484-2 8
+```
+
+执行完成后重点看两类产物：
+
+1. bit 文件：工程 build 目录下 `runs/impl_1/*.bit`
+2. 报告文件：`fpga_side/logs/impl_timing_summary.rpt`、`impl_drc.rpt`、`impl_clock_interaction.rpt`、`impl_utilization.rpt`、`impl_cdc.rpt`
+
+同时，VS Code 任务已加入：
+
+1. `Vivado: build bitstream (top_board)`
+2. `Vivado: program device (latest bit)`
+
+你可以在 VS Code 的 Run Task 中直接点这个任务执行完整可烧录性验证流程。
+
+#### 一键烧录脚本（Program Device）
+
+本仓库已提供自动烧录脚本：
+
+1. `fpga_side/scripts/vivado/program_device.tcl`
+
+默认行为：
+1. 自动查找 `fpga_side/rtl/build/*/*.runs/impl_1/*.bit` 下最新的 bit 文件。
+2. 自动连接硬件并对首个检测到的器件执行下载。
+
+PowerShell 执行示例：
+
+```powershell
+vivado -mode batch -source fpga_side/scripts/vivado/program_device.tcl
+```
+
+如果你要指定 bit 文件，也可以传参：
+
+```powershell
+vivado -mode batch -source fpga_side/scripts/vivado/program_device.tcl -tclargs fpga_side/rtl/build/fpga_exchange_serdes_build/fpga_exchange_serdes_build.runs/impl_1/top_board.bit
+```
+
+### 8.3.3 烧录前最终检查单（5 项）
+
+在点 Program Device 之前，逐条确认：
+
+1. 顶层是 top_board。
+2. 约束文件是实机版本（board_real.xdc）且端口名匹配。
+3. DRC 已清零关键错误。
+4. Timing Summary 达到 WNS >= 0、TNS = 0。
+5. bit 文件时间戳是你刚刚这次编译出来的（避免烧到旧 bit）。
+
+满足以上 5 条，再执行 8.3 的 Program Device 流程，才叫"可烧录性验证通过"。
+
+### 8.4 上位机应该看到什么输入
+
+实机验证时，上位机输入不要只写成抽象“行情数据”，而要明确展示成下面这种内容：
+
+| 字段 | 示例 | 说明 |
+|---|---|---|
+| stock_code | 000858SZ | 8 字节股票代码 |
+| timestamp | 1748667600 | 秒级时间戳 |
+| open | 146.23 | 开盘价 |
+| high | 147.10 | 最高价 |
+| low | 145.88 | 最低价 |
+| close | 146.72 | 收盘价 |
+| volume | 512340 | 成交量 |
+
+推荐你在上位机侧把每次发送都打印成一行日志，像这样：
+
+```text
+[TX] code=000858SZ ts=1748667600 O=146.23 H=147.10 L=145.88 C=146.72 V=512340
+```
+
+这样做的好处是，出了问题时你能立刻知道是行情源不对、协议字段不对，还是 FPGA 没回包。
+
+### 8.5 上位机应该看到什么输出
+
+FPGA 回包后，上位机至少要展示下面这些内容：
+
+| 字段 | 示例 | 说明 |
+|---|---|---|
+| stock_code | 000858SZ | 回显股票代码 |
+| timestamp | 1748667600 | 回显时间戳 |
+| ma5 | 146.40 | 5 日均线或 5 窗均值 |
+| ma10 | 145.98 | 10 日均线或 10 窗均值 |
+| rsi6 | 63.20 | 短周期强弱指标 |
+| rsi14 | 58.90 | 长周期强弱指标 |
+| trade_signal | 1 | 买入/卖出/观望 |
+| signal_strength | 70 | 信号强度 |
+
+推荐的输出日志格式：
+
+```text
+[RX] code=000858SZ ts=1748667600 MA5=146.40 MA10=145.98 RSI6=63.20 RSI14=58.90 SIGNAL=1 STRENGTH=70
+```
+
+如果你后面要做上位机展示页，这些字段就是 UI 的核心卡片内容，不要再发散。
+
+### 8.6 网页级展示方案：同花顺风格但不复制
+
+你提到的“同花顺风格”，我建议只借用信息密度和布局逻辑，不复制具体样式。核心是：深色底、模块化分区、高对比数字、行情和信号并列、历史曲线和明细同时可见。
+
+推荐页面布局如下：
+
+```mermaid
+flowchart TB
+   A[顶部状态栏<br/>连接状态 / 模式 / 目标IP / RTT / 丢包率]
+   B[左侧行情区<br/>股票代码 / 当前价 / 涨跌幅 / 成交量]
+   C[中间图表区<br/>K线 / 成交量 / 指标叠加]
+   D[右侧信号区<br/>MA / RSI / 交易信号 / 强度]
+   E[底部日志区<br/>TX / RX / 错误 / 重试 / 时间戳]
+   A --> B
+   A --> C
+   A --> D
+   A --> E
+```
+
+#### 页面信息层级建议
+
+1. 顶栏放连接状态：`已连接 / 未连接 / 重试中`、当前模式 `real/mock`、FPGA IP、延迟、最近一次回包时间。
+2. 左侧放实时行情：当前价、涨跌幅、成交量、换手率、委托明细或简化盘口。
+3. 中间放主图：K 线、成交量、MA 线、RSI 小窗或指标标签。
+4. 右侧放信号卡片：交易信号、信号强度、最近三次回包摘要、告警状态。
+5. 底部放日志台：TX/RX 帧、CRC 错误、超时重试、协议拒绝原因。
+
+#### 页面风格建议
+
+1. 深色背景，不要纯黑，建议用偏蓝灰的暗底。
+2. 数字信息要高亮，价格、涨跌幅、信号强度要一眼看见。
+3. 模块之间要有清晰边界，尽量用卡片和分栏，不要堆在一起。
+4. 图表区域保持最大，日志区和信号区做次级分屏。
+5. 动效只做必要的：连接状态闪烁、数据刷新高亮、回包成功淡入。
+
+#### 网页上最有用的三个指标
+
+1. `连接状态`：让你知道 FPGA 链路是否真的通了。
+2. `最新回包`：显示最新一帧的 MA、RSI、信号、强度。
+3. `历史趋势`：最近 20 条输入/输出对比，方便确认 FPGA 运算是否稳定。
+
+### 8.7 实机验证的验收标准
+
+实机验证通过，不是“板子亮了”就算，而是要满足下面这些条件：
+
+1. 烧录成功，硬件管理器能识别目标器件。
+2. 上位机能持续发送行情帧，且发送日志正常。
+3. FPGA 能持续返回回包，不是偶发一次。
+4. 上位机能把输入和输出同时展示出来，字段对应关系正确。
+5. 网页界面能看见连接状态、输入行情、回包指标、交易信号和日志。
+6. 如果你断开网络、改错 IP 或发坏帧，界面能明确显示失败原因，而不是静默。
+
+---
+
+## 9. 常见踩坑与解决方案
 
 ### 坑 1：Vivado 命令找不到
 ```
@@ -374,7 +792,11 @@ $env:PYTHONPATH = "host_side/app"
 **解决**：改任何协议字段后，必须同步更新 ICD → 数据字典 → Python `fpga_protocol.py` → FPGA `m1_protocol_core.v` → 相关测试。
 
 ### 坑 7：Vivado 2019 项目文件太多，Git 很难管理
-**解决**：本项目的 TCL 脚本采用"临时创建工程，跑完即删"策略。仿真工程文件在 `fpga_side/rtl/sim/` 下，已在 `.gitignore` 中忽略。
+**解决**：
+1. 仿真工程输出在 `fpga_side/rtl/sim/`。
+2. 综合/实现输出在 `fpga_side/rtl/build/`。
+3. 报告统一导出在 `fpga_side/logs/`。
+4. 以上目录建议都加入忽略策略，避免把中间产物误提交。
 
 ### 坑 8：Windows PowerShell 执行策略阻止脚本
 **解决**：以管理员身份运行 PowerShell，执行：
@@ -384,7 +806,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ---
 
-## 9. 我要改代码，该怎么做（标准工作流）
+## 10. 我要改代码，该怎么做（标准工作流）
 
 ### 场景 A：只改 Python 侧（如加一个新指标对比逻辑）
 
@@ -420,7 +842,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 1. 在 `fpga_side/rtl/src/` 下新建 `.v` 文件
 2. 在 `fpga_side/rtl/tb/` 下新建对应 TB 文件
-3. 在 `top.v` 中实例化新模块，连线
+3. 纯算法模块接入优先改 `top.v`；涉及板级 IO/PHY/约束联动时改 `top_board.v`
 4. 更新 `fpga_side/rtl/src/top_stub.v`（如需要）
 5. 跑新增的 TB 验证
 6. 更新 `doc/FPGA 模块详细设计.md`
@@ -481,6 +903,12 @@ vivado -mode batch -source fpga_side/scripts/vivado/run_single_tb.tcl -tclargs t
 vivado -mode batch -source fpga_side/scripts/vivado/run_single_tb.tcl -tclargs tb_indicator_top
 vivado -mode batch -source fpga_side/scripts/vivado/run_single_tb.tcl -tclargs tb_score_calc
 vivado -mode batch -source fpga_side/scripts/vivado/run_single_tb.tcl -tclargs tb_udp_result_tx
+
+# ====== Vivado 可烧录性验证（推荐）======
+vivado -mode batch -source fpga_side/scripts/vivado/build_bit.tcl -tclargs top_board xc7a100tfgg484-2 8
+
+# ====== Vivado 一键烧录（下载最新 bit）======
+vivado -mode batch -source fpga_side/scripts/vivado/program_device.tcl
 
 # ====== Vivado GUI ======
 vivado                                                       # 启动 GUI

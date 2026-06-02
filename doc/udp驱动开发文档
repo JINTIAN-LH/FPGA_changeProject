@@ -1,0 +1,95 @@
+﻿# UDP驱动开发文档（核心保留版）
+
+## 1. 本工程当前目标
+
+将板级真实链路打通为：
+
+RGMII(PHY ETHA) -> MAC RX -> IPv4/UDP解析 ->
+1) m1_rx_*（喂给m1_protocol_core）
+2) 48B行情帧解码（驱动price/open/high/low/close/volume）
+
+说明：
+- ETHA为首条上线链路。
+- ETHB保留约束与接口，暂不作为首板必通路径。
+
+## 2. 已落地实现（本仓库当前版本）
+
+### 2.1 复位策略
+- 已改为内部上电复位。
+- 不依赖外部复位按键输入。
+- 相关文件：
+  - fpga_side/rtl/src/board_reset_gen.v
+  - fpga_side/rtl/src/top_board.v
+
+### 2.2 接收链路（RX）
+- RGMII DDR采样：`rgmii_rx_sync`
+- 以太网帧接收整形：`mac_rx`
+- IPv4/UDP payload提取：`ip_udp_parser`
+- 48B行情帧解码：`market_frame_decoder`
+- 桥接分发：`board_eth_bridge`
+  - 同时输出到 `m1_rx_*`
+  - 同时输出到 `board_market_feed_ingress` 的 frame_* 输入
+
+### 2.3 顶层连接
+- `top_board` 已连接上述链路：
+  - ETHA RX -> UDP payload -> m1_rx_*
+  - ETHA RX -> UDP payload -> 行情解码 -> price/open/high/low/close/volume
+
+## 3. 协议与约束（必须遵守）
+
+### 3.1 Host协议固定事实
+- 上行帧长度：48B
+- 下行帧长度：44B
+- 字节序：big-endian
+- CRC32字段位置：
+  - 48B上行：bytes 44..47
+  - 44B下行：bytes 40..43
+- 参考文件：
+  - host_side/app/fpga_protocol.py
+  - fpga_side/rtl/src/board_protocol_contract.vh
+
+### 3.2 板级约束策略
+- 管理与以太网相关脚位按当前文档已固定映射。
+- 外部sys_rst_n引脚约束已取消（内部复位）。
+- 参考文件：
+  - fpga_side/rtl/constraints/board_real.xdc
+
+## 4. 外部实现中“保留核心/丢弃噪音”原则
+
+保留：
+- 模块拆分思路（RGMII/MAC/UDP/解码/桥接）
+- 接口方向与职责边界
+- ETHA-first策略
+
+不直接采纳：
+- 未经过本仓库接口对齐的整段示例代码
+- 与当前top接口不一致的端口命名
+- 未说明时钟域/复位域的代码片段
+
+## 5. 仍待完成项（全链条上线前）
+
+1. TX路径真实化：
+- m1_tx_* -> UDP封包 -> MAC TX -> RGMII TX
+
+2. PHY初始化：
+- MDIO状态机（RTL8211配置）
+
+3. 强校验：
+- 对48B行情帧增加CRC32校验后再送行情解码
+
+4. 时序/约束收敛：
+- 结合Vivado实现结果补齐/细化时序约束与CDC检查
+
+## 6. 验证状态
+
+- Host侧回归（非阻塞子集）已通过：
+  - test_protocol
+  - test_validator
+  - test_udp_transport
+  - test_contract_snapshot
+  - test_mock_fpga_behavior
+
+注意：
+- 现有“Python: unit regression”任务中的PYTHONPATH写法存在PowerShell转义问题。
+- 手动命令可正常回归：
+  - `$env:PYTHONPATH='host_side/app'; python -m unittest -v ...`

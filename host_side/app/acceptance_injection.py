@@ -8,7 +8,7 @@ Cases:
 - timeout_retry    : transport timeout/retry path should trigger expected timeout stats
 
 Usage examples:
-  python acceptance_injection.py --host 192.168.1.101 --port 5001
+    python acceptance_injection.py --host 169.254.0.118 --port 5001
   python acceptance_injection.py --start-mock
 """
 
@@ -126,7 +126,7 @@ def run_all(host: str, port: int, code: str) -> list[CaseResult]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="192.168.1.101")
+    parser.add_argument("--host", default="169.254.0.118")
     parser.add_argument("--port", type=int, default=5001)
     parser.add_argument("--code", default="000858SZ")
     parser.add_argument("--start-mock", action="store_true")

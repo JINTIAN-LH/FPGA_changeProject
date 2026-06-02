@@ -20,3 +20,22 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Vivado journal artifacts
+vivado.jou
+vivado_*.backup.jou
+webtalk.jou
+webtalk_*.backup.jou
+
+# Vivado simulation artifacts
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+
+# Vivado build output (retain only final .bit)
+fpga_side/rtl/build/*/
+
+# PDF Extraction intermediates (superseded by .xdc)
+reports/

@@ -1,0 +1,25 @@
+Copyright 1986-2019 Xilinx, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2019.1 (win64) Build 2552052 Fri May 24 14:49:42 MDT 2019
+| Date         : Tue Jun  2 00:22:11 2026
+| Host         : DESKTOP-VU9L4JN running 64-bit major release  (build 9200)
+| Command      : report_clock_interaction -file ./fpga_side/logs/impl_clock_interaction.rpt
+| Design       : top_board
+| Device       : 7a100t-fgg484
+| Speed File   : -2  PRODUCTION 1.23 2018-06-13
+--------------------------------------------------------------------------------------------
+
+Clock Interaction Report
+
+Clock Interaction Table
+-----------------------
+
+                            WNS                            TNS Failing  TNS Total    WNS Path         Clock-Pair           Inter-Clock          
+From Clock    To Clock      Clock Edges  WNS(ns)  TNS(ns)    Endpoints    Endpoints  Requirement(ns)  Classification       Constraints          
+------------  ------------  -----------  -------  -------  -----------  -----------  ---------------  -------------------  -------------------  
+etha_rxck     etha_rxck     rise - rise     0.67     0.00            0         4925             8.00  Clean                Timed                
+etha_rxck     sys_clk_50m                                            0           18                   Ignored              Asynchronous Groups  
+sys_clk_50m   etha_rxck                                              0         2434                   Ignored              Asynchronous Groups  
+sys_clk_50m   sys_clk_50m   rise - rise    -0.04    -0.06            2         5800            20.00  Clean                Timed                
+
+

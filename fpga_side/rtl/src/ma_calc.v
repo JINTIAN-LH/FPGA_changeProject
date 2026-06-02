@@ -16,6 +16,9 @@ reg [5:0]  sample_cnt;
 reg [63:0] sum5;
 reg [63:0] sum20;
 reg [63:0] sum60;
+reg [63:0] sum5_next;
+reg [63:0] sum20_next;
+reg [63:0] sum60_next;
 integer i;
 
 always @(posedge clk or negedge rst_n) begin
@@ -35,27 +38,24 @@ always @(posedge clk or negedge rst_n) begin
         valid_out <= 1'b0;
 
         if (valid_in) begin
-            sum5  = close;
-            sum20 = close;
-            sum60 = close;
+            // 运行和更新，替代大规模历史重求和，降低组合深度。
+            sum5_next  = sum5 + {32'd0, close};
+            sum20_next = sum20 + {32'd0, close};
+            sum60_next = sum60 + {32'd0, close};
 
-            for (i = 0; i < 4; i = i + 1) begin
-                if (sample_cnt > i) begin
-                    sum5 = sum5 + close_hist[i];
-                end
+            if (sample_cnt >= 6'd5) begin
+                sum5_next = sum5_next - {32'd0, close_hist[4]};
+            end
+            if (sample_cnt >= 6'd20) begin
+                sum20_next = sum20_next - {32'd0, close_hist[19]};
+            end
+            if (sample_cnt >= 6'd60) begin
+                sum60_next = sum60_next - {32'd0, close_hist[59]};
             end
 
-            for (i = 0; i < 19; i = i + 1) begin
-                if (sample_cnt > i) begin
-                    sum20 = sum20 + close_hist[i];
-                end
-            end
-
-            for (i = 0; i < 59; i = i + 1) begin
-                if (sample_cnt > i) begin
-                    sum60 = sum60 + close_hist[i];
-                end
-            end
+            sum5  <= sum5_next;
+            sum20 <= sum20_next;
+            sum60 <= sum60_next;
 
             for (i = 59; i > 0; i = i - 1) begin
                 close_hist[i] <= close_hist[i - 1];
@@ -67,21 +67,21 @@ always @(posedge clk or negedge rst_n) begin
             end
 
             if (sample_cnt >= 6'd4) begin
-                ma5 <= sum5 / 32'd5;
+                ma5 <= sum5_next / 32'd5;
             end else begin
-                ma5 <= sum5 / (sample_cnt + 6'd1);
+                ma5 <= close;
             end
 
             if (sample_cnt >= 6'd19) begin
-                ma20 <= sum20 / 32'd20;
+                ma20 <= sum20_next / 32'd20;
             end else begin
-                ma20 <= sum20 / (sample_cnt + 6'd1);
+                ma20 <= close;
             end
 
             if (sample_cnt >= 6'd59) begin
-                ma60 <= sum60 / 32'd60;
+                ma60 <= sum60_next / 32'd60;
             end else begin
-                ma60 <= sum60 / (sample_cnt + 6'd1);
+                ma60 <= close;
             end
 
             valid_out <= 1'b1;
