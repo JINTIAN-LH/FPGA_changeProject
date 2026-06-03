@@ -44,7 +44,11 @@ module top_board (
     output wire        ethb_txd0,
     output wire        ethb_txd1,
     output wire        ethb_txd2,
-    output wire        ethb_txd3
+    output wire        ethb_txd3,
+
+    // Debug outputs
+    output wire        dbg_arp_responded,
+    output wire        dbg_ping_responded
 );
 
 wire        sys_rst_n;
@@ -147,7 +151,10 @@ board_eth_bridge u_eth_bridge (
     .m1_tx_ready    (m1_tx_ready),
     .m1_tx_data     (m1_tx_data),
     .m1_tx_valid    (m1_tx_valid),
-    .m1_tx_last     (m1_tx_last)
+    .m1_tx_last     (m1_tx_last),
+
+    .arp_responded  (dbg_arp_responded),
+    .ping_responded (dbg_ping_responded)
 );
 
 top u_core (

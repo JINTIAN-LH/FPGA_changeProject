@@ -31,12 +31,16 @@ MAX_KLINE_LEN = 240          # 最多取多少根K线（1分钟周期一天约24
 
 # ==================== FPGA UDP 联调参数 ====================
 ENABLE_FPGA_UDP = True  # “True”表示启用 FPGA UDP 联调功能（默认 False，避免误连真实硬件）
-FPGA_UDP_MODE = "real"  # "mock" | "real"
+FPGA_UDP_MODE = “real”  # “mock” | “real”
 
 # ICD defaults for real hardware link.
-FPGA_REAL_UDP_HOST = "169.254.0.118"
+# NOTE: FPGA 和 PC 必须在同一子网！
+# FPGA IP: 169.254.0.118 (链路本地地址，FPGA 端硬编码)
+# PC 网卡需要设置为 169.254.0.x 子网，例如 169.254.0.100
+# 子网掩码: 255.255.0.0，网关留空
+FPGA_REAL_UDP_HOST = “169.254.0.118”
 FPGA_REAL_UDP_PORT = 5001
-PC_REAL_BIND_HOST = "192.168.100.104"
+PC_REAL_BIND_HOST = “169.254.0.100”  # 必须与 FPGA 在同一子网
 PC_REAL_BIND_PORT = 5000
 
 # Local loopback defaults for software-only verification.

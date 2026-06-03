@@ -45,9 +45,15 @@ module board_eth_bridge (
     output wire        m1_tx_ready,
     input  wire [7:0]  m1_tx_data,
     input  wire        m1_tx_valid,
-    input  wire        m1_tx_last
+    input  wire        m1_tx_last,
+
+    // Debug outputs
+    output wire        arp_responded,
+    output wire        ping_responded
 );
 
+localparam [47:0] LOCAL_MAC = 48'h02_00_00_00_00_01;
+localparam [31:0] LOCAL_IP  = 32'hA9FE0076;  // 169.254.0.118
 localparam [15:0] M1_UDP_DST_PORT = 16'd5001;
 
 wire        gmii_rx_clk;
@@ -64,6 +70,11 @@ wire        eth_rx_last;
 wire        udp_payload_valid;
 wire [7:0]  udp_payload_data;
 wire        udp_payload_last;
+
+wire        net_tx_valid;
+wire [7:0]  net_tx_data;
+wire        net_tx_last;
+wire        net_tx_ready;
 
 wire        mdio_mdc;
 wire        mdio_out;
@@ -125,16 +136,30 @@ mac_rx u_mac_rx (
     .eth_rx_last  (eth_rx_last)
 );
 
-ip_udp_parser u_ip_udp_parser (
-    .clk               (gmii_rx_clk),
-    .rst_n             (rst_n),
-    .eth_rx_valid      (eth_rx_valid),
-    .eth_rx_data       (eth_rx_data),
-    .eth_rx_last       (eth_rx_last),
-    .cfg_udp_dst_port  (M1_UDP_DST_PORT),
-    .udp_payload_valid (udp_payload_valid),
-    .udp_payload_data  (udp_payload_data),
-    .udp_payload_last  (udp_payload_last)
+// Network handler with ARP, ICMP, and UDP support
+network_handler #(
+    .LOCAL_MAC(LOCAL_MAC),
+    .LOCAL_IP(LOCAL_IP),
+    .UDP_DST_PORT(M1_UDP_DST_PORT)
+) u_network_handler (
+    .clk(gmii_rx_clk),
+    .rst_n(rst_n),
+    .rx_valid(eth_rx_valid),
+    .rx_data(eth_rx_data),
+    .rx_last(eth_rx_last),
+    .tx_valid(net_tx_valid),
+    .tx_data(net_tx_data),
+    .tx_last(net_tx_last),
+    .tx_ready(net_tx_ready),
+    .udp_payload_valid(udp_payload_valid),
+    .udp_payload_data(udp_payload_data),
+    .udp_payload_last(udp_payload_last),
+    .app_tx_valid(tx_stream_valid),
+    .app_tx_data(tx_stream_data),
+    .app_tx_last(tx_stream_last),
+    .app_tx_ready(tx_stream_ready),
+    .arp_responded(arp_responded),
+    .ping_responded(ping_responded)
 );
 
 cdc_async_fifo #(
@@ -173,6 +198,10 @@ assign tx_stream_valid = ~tx_fifo_empty;
 assign tx_stream_data  = tx_fifo_dout[7:0];
 assign tx_stream_last  = tx_fifo_dout[8];
 assign tx_fifo_rd_en   = tx_stream_valid & tx_stream_ready;
+
+// TX MUX: network_handler output or direct UDP TX
+// For now, use network_handler which handles ARP/ICMP priority
+assign net_tx_ready = 1'b1;  // Always ready to TX
 
 udp_tx_engine u_udp_tx_engine (
     .clk      (gmii_tx_clk),

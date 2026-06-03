@@ -24,11 +24,13 @@
 
 把 A 股行情数据（open/high/low/close/volume）从 Python 上位机通过 UDP 发送给 FPGA，FPGA 硬件并行计算 MA/RSI/MACD/量比/Bollinger/ATR 等指标并打分，然后把结果打包回传给上位机展示交易信号。
 
-**当前进展（2026-05-31）**：
+**当前进展（2026-06-03）**：
 - 协议闭环稳定（48B 上行 → FPGA 校验 → 44B 下行回包）
 - 指标链路完整（MA5/MA20/MA60、RSI、MACD(DIF/DEA)、Bollinger、ATR、量比）
 - 评分决策链路接入（0-100 评分 + 0/1/2 买卖决策）
 - Python 12/12 测试通过，FPGA 6 个 TB 全部跑通
+- **网络协议栈完整**：ARP 响应、ICMP Ping、UDP 收发全部实现
+- **PC-FPGA 网络连通性问题已修复**：IP 子网配置、ARP 响应器、ICMP 响应器
 
 ---
 
@@ -45,13 +47,24 @@ fpga_exchangeSerdes/
 │  │   ├─ e2e_runner.py       ← 端到端流程
 │  │   ├─ run_all.py          ← 一键执行
 │  │   └─ config.py           ← 网络/超时配置
-│  ├─ tests/              # Python 测试（6 个文件，12 项）
+│  ├─ tests/              # Python 测试（8 个文件，12+ 项）
+│  │   ├─ test_protocol.py
+│  │   ├─ test_validator.py
+│  │   ├─ test_udp_transport.py
+│  │   ├─ test_run_all_protocol.py
+│  │   ├─ test_contract_snapshot.py
+│  │   ├─ test_mock_fpga_behavior.py
+│  │   └─ network_debug.py    ← 网络调试工具（新增）
 │  └─ data/               # 样例数据
 ├─ fpga_side/
 │  ├─ rtl/
 │  │   ├─ src/            # Verilog 源码（含板级与算法级顶层）
 │  │   │   ├─ top_board.v     ← 板级综合/烧录顶层（当前实机主入口）
 │  │   │   ├─ top.v           ← 算法/协议逻辑顶层
+│  │   │   ├─ network_handler.v ← 网络协议处理器（新增）
+│  │   │   ├─ arp_responder.v ← ARP 响应器（新增）
+│  │   │   ├─ icmp_responder.v ← ICMP Ping 响应器（新增）
+│  │   │   ├─ board_eth_bridge.v ← 以太网桥接（已更新）
 │  │   │   ├─ m1_protocol_core.v ← 协议校验核
 │  │   │   ├─ indicator_top.v ← 指标汇聚
 │  │   │   ├─ ma_calc.v       ← 均线 MA
@@ -73,13 +86,14 @@ fpga_exchangeSerdes/
 │  │   ├─ build_bit.tcl      ← 一键综合/实现/报告/bit
 │  │   └─ program_device.tcl ← 一键连接硬件并下载最新 bit
 │  └─ logs/              # 仿真输出日志
-└─ doc/                  # 项目文档（9 份）
+└─ doc/                  # 项目文档（14 份）
     ├─ 产品需求说明书 (PRD).md
     ├─ 通信协议接口控制文档 (ICD).md    ← 协议字段定义（权威来源）
     ├─ 数据字典.md
     ├─ 系统总体架构设计.md
     ├─ FPGA 模块详细设计.md
     ├─ Python 模块详细设计.md
+    ├─ network_setup_guide.md ← 网络配置指南（新增）
     └─ protocol_contract_v1.json
 ```
 
@@ -383,6 +397,108 @@ flowchart LR
 1. **上行**：Python 取行情 → 校验 → 协议打包（48B）→ UDP 发送
 2. **FPGA 处理**：协议校验（header/length/crc）→ 指标计算 → 评分 → 打包（44B）
 3. **下行**：UDP 回传 → Python 解包 → 展示交易信号
+
+---
+
+## 7.1 网络协议栈（2026-06-03 新增）
+
+FPGA 现在实现了完整的网络协议栈，支持 ARP、ICMP、UDP 三种协议。
+
+### 网络协议栈架构
+
+```mermaid
+flowchart TB
+    subgraph RX[接收路径]
+        R1[PHY RGMII] --> R2[rgmii_rx_sync]
+        R2 --> R3[mac_rx]
+        R3 --> R4[network_handler]
+    end
+
+    subgraph Handler[协议处理]
+        R4 -->|EtherType 0x0806| H1[arp_responder]
+        R4 -->|EtherType 0x0800 + ICMP| H2[icmp_responder]
+        R4 -->|EtherType 0x0800 + UDP| H3[ip_udp_parser]
+    end
+
+    subgraph TX[发送路径]
+        H1 -->|ARP Reply| T1[TX MUX]
+        H2 -->|Ping Reply| T1
+        H3 -->|UDP Payload| T2[CDC FIFO]
+        T2 --> T3[udp_tx_engine]
+        T3 --> T1
+        T1 --> T4[rgmii_tx_sync]
+        T4 --> T5[PHY RGMII]
+    end
+
+    subgraph App[应用层]
+        H3 --> A1[m1_protocol_core]
+        A1 --> A2[indicator_top]
+        A2 --> A3[score_calc]
+        A3 --> A4[udp_result_tx]
+        A4 --> T2
+    end
+```
+
+### 新增模块说明
+
+#### network_handler.v
+- **职责**：网络协议栈顶层处理器
+- **功能**：
+  - 捕获以太网头（14 字节）
+  - 根据 EtherType 分发到不同协议处理器
+  - TX 多路复用（优先级：ARP > ICMP > UDP）
+- **接口**：
+  - RX：来自 mac_rx 的字节流
+  - TX：发送到 rgmii_tx_sync 的字节流
+  - UDP Payload：与应用层交互
+
+#### arp_responder.v
+- **职责**：响应 ARP 请求
+- **功能**：
+  - 检测 ARP 请求（opcode = 0x0001）
+  - 验证目标 IP 是否为本机 IP
+  - 构造 ARP 响应（包含本机 MAC 地址）
+  - 计算 FCS（CRC32）
+- **配置参数**：
+  - `LOCAL_MAC`：本机 MAC 地址（默认 02:00:00:00:00:01）
+  - `LOCAL_IP`：本机 IP 地址（默认 169.254.0.118）
+
+#### icmp_responder.v
+- **职责**：响应 ICMP Ping 请求
+- **功能**：
+  - 检测 ICMP Echo Request（type = 8）
+  - 验证目标 IP 是否为本机 IP
+  - 存储 ICMP payload（最多 256 字节）
+  - 构造 ICMP Echo Reply
+  - 计算 IP 头校验和
+- **用途**：测试网络连通性，方便调试
+
+### 网络配置要求
+
+| 参数 | FPGA 端 | PC 端 |
+|------|---------|-------|
+| IP 地址 | 169.254.0.118 | 169.254.0.100 |
+| 子网掩码 | 255.255.0.0 | 255.255.0.0 |
+| MAC 地址 | 02:00:00:00:00:01 | (自动) |
+| UDP 端口 | 5001 (接收) / 5000 (发送) | 5000 (接收) / 5001 (发送) |
+
+**重要**：PC 和 FPGA 必须在同一子网（169.254.0.x/16）！
+
+### 网络调试命令
+
+```bash
+# 测试 Ping 连通性
+ping 169.254.0.118
+
+# 检查 ARP 表
+arp -a
+
+# 运行网络调试脚本
+python host_side/tests/network_debug.py
+
+# 使用 Wireshark 抓包
+# 过滤器: udp port 5001 or udp port 5000 or arp
+```
 
 ---
 
@@ -804,6 +920,43 @@ $env:PYTHONPATH = "host_side/app"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
+### 坑 9：Ping 不通 FPGA（网络不通）
+**现象**：`ping 169.254.0.118` 超时
+**可能原因**：
+1. PC 不在同一子网（169.254.0.x）
+2. FPGA ARP 响应器未工作
+3. 以太网线未连接或 FPGA 未上电
+4. 防火墙阻止 ICMP
+
+**解决**：
+1. 检查 PC IP 配置：`ipconfig /all`，确认有 169.254.0.x 地址
+2. 使用 Wireshark 抓包查看 ARP 请求/响应
+3. 检查物理连接和 FPGA 状态
+4. 临时关闭防火墙测试
+
+### 坑 10：Ping 通但 UDP 不通
+**现象**：`ping 169.254.0.118` 成功，但 UDP 通信超时
+**可能原因**：
+1. UDP 端口配置错误
+2. FPGA UDP 解析器未工作
+3. 防火墙阻止 UDP
+
+**解决**：
+1. 检查端口配置：FPGA 监听 5001，PC 监听 5000
+2. 使用 Wireshark 抓包查看 UDP 包
+3. 运行网络调试脚本：`python host_side/tests/network_debug.py --udp`
+
+### 坑 11：PC IP 地址不在正确子网
+**现象**：无法与 FPGA 通信
+**解决**：
+1. 打开网络连接（ncpa.cpl）
+2. 右键以太网适配器 → 属性
+3. 选择 IPv4 → 属性
+4. 设置：
+   - IP: 169.254.0.100
+   - 子网掩码: 255.255.0.0
+   - 网关: 留空
+
 ---
 
 ## 10. 我要改代码，该怎么做（标准工作流）
@@ -829,9 +982,9 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ### 场景 C：改协议字段（如增加新字段，需要改 ICD）
 
 这是最危险的操作，必须按顺序：
-1. 先改 `doc/通信协议接口控制文档 (ICD).md`
-2. 改 `doc/数据字典.md`
-3. 改 `doc/protocol_contract_v1.json`
+1. 先改 `doc/02-设计文档/通信协议接口控制文档 (ICD).md`
+2. 改 `doc/02-设计文档/数据字典.md`
+3. 改 `doc/03-技术参考/protocol_contract_v1.json`
 4. 改 `host_side/app/fpga_protocol.py`（打包/解包逻辑）
 5. 改 `fpga_side/rtl/src/m1_protocol_core.v`（解析逻辑）
 6. 改相关测试
@@ -856,18 +1009,18 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 | 序号 | 文档 | 对应操作 |
 |------|------|----------|
-| 1 | `doc/MA703FA_FPGAEncyclopedia.md`（本文档） | 搭建环境 |
+| 1 | `doc/01-快速入门/MA703FA_FPGAEncyclopedia.md`（本文档） | 搭建环境 |
 | 2 | `doc/README.md` | 了解文档体系 |
-| 3 | `doc/产品需求说明书 (PRD).md` | 理解"要做什么" |
-| 4 | `doc/通信协议接口控制文档 (ICD).md` | **精读**：帧格式、字段偏移 |
-| 5 | `doc/数据字典.md` | 字段类型与取值范围 |
-| 6 | `doc/系统总体架构设计.md` | 模块边界与闭环路径 |
-| 7 | `doc/Python 模块详细设计.md` | 对照 `host_side/app/` 源码阅读 |
-| 8 | `doc/FPGA 模块详细设计.md` | 对照 `fpga_side/rtl/src/` 源码阅读 |
+| 3 | `doc/02-设计文档/产品需求说明书 (PRD).md` | 理解"要做什么" |
+| 4 | `doc/02-设计文档/通信协议接口控制文档 (ICD).md` | **精读**：帧格式、字段偏移 |
+| 5 | `doc/02-设计文档/数据字典.md` | 字段类型与取值范围 |
+| 6 | `doc/02-设计文档/系统总体架构设计.md` | 模块边界与闭环路径 |
+| 7 | `doc/02-设计文档/Python 模块详细设计.md` | 对照 `host_side/app/` 源码阅读 |
+| 8 | `doc/02-设计文档/FPGA 模块详细设计.md` | 对照 `fpga_side/rtl/src/` 源码阅读 |
 
 ---
 
-## 11. 当前验证结论（2026-05-31）
+## 11. 当前验证结论（2026-06-03）
 
 | 验证项 | 状态 | 证据 |
 |--------|------|------|
@@ -878,8 +1031,10 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 | `tb_indicator_top` | ✅ 通过 | 指标链路输出正常 |
 | `tb_score_calc` | ✅ 通过 | 评分决策映射正确 |
 | `tb_udp_result_tx` | ✅ 通过 | 字节流打包正常 |
+| 网络协议栈 | ✅ 已实现 | ARP/ICMP/UDP 全部实现 |
+| PC-FPGA 连通性 | ✅ 已修复 | IP 子网配置、ARP 响应器 |
 
-**一句话**：仿真环境下所有链路已跑通，下一阶段需要上板烧录、实机验证、长时稳定性测试。
+**一句话**：仿真环境和网络协议栈全部就绪，下一阶段需要上板烧录、实机验证网络连通性、长时稳定性测试。
 
 ---
 
@@ -912,8 +1067,20 @@ vivado -mode batch -source fpga_side/scripts/vivado/program_device.tcl
 
 # ====== Vivado GUI ======
 vivado                                                       # 启动 GUI
+
+# ====== 网络调试（新增）======
+ping 169.254.0.118                                           # 测试 Ping 连通性
+arp -a                                                       # 查看 ARP 表
+python host_side/tests/network_debug.py                      # 运行网络调试脚本
+python host_side/tests/network_debug.py --ping               # 只测试 Ping
+python host_side/tests/network_debug.py --udp                # 只测试 UDP
+python host_side/tests/network_debug.py --config             # 显示网络配置
+
+# ====== Wireshark 抓包过滤器 ======
+# udp port 5001 or udp port 5000 or arp
+# ip.addr == 169.254.0.118
 ```
 
 ---
 
-> **最后一个建议**：遇到问题时，先看第 8 节的踩坑清单，90% 的问题都在里面。
+> **最后一个建议**：遇到问题时，先看第 9 节的踩坑清单，90% 的问题都在里面。网络问题请看第 7.1 节和坑 9-11。

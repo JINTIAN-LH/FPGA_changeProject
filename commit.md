@@ -134,3 +134,12 @@
   - 更新 `fpga_side/rtl/tb/tb_system_mixed.v` 与 `fpga_side/rtl/tb/tb_top.sv` 以匹配新接口并增强映射校验
   - 执行并通过关键闭环仿真：`tb_m1_protocol_core`、`tb_system_mixed`、`tb_top`
   - 全量更新项目文档入口与百科说明，清理临时/过期文档并补齐 `doc/README.md`
+
+### 13) chore: set real FPGA validation IPs for hardware bring-up
+
+- Commit: pending
+- Branch: main
+- Scope:
+  - 将实机联调主机地址更新为 `192.168.100.104`
+  - 将 FPGA 目标 UDP 地址更新为 `169.254.0.118`
+  - 同步更新实机联调脚本默认参数与协议/设计文档中的网络配置参考

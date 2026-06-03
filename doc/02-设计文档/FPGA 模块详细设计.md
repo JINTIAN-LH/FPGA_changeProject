@@ -1,7 +1,7 @@
 # FPGA 模块详细设计（落地实现版）
 
-版本：V2.1  
-日期：2026-05-30
+版本：V2.2  
+日期：2026-06-03
 
 ## 1. 文档定位
 
@@ -11,6 +11,16 @@
 
 ```mermaid
 flowchart LR
+  subgraph NetStack[网络协议栈]
+    N1[network_handler.v]
+    N2[arp_responder.v]
+    N3[icmp_responder.v]
+    N4[ip_udp_parser.v]
+    N1 --> N2
+    N1 --> N3
+    N1 --> N4
+  end
+
   subgraph Proto[协议链路]
     P1[m1_protocol_core.v]
   end
@@ -31,16 +41,75 @@ flowchart LR
 
   subgraph Tx[发送链路]
     T1[udp_result_tx.v]
+    T2[udp_tx_engine.v]
   end
 
-  Top[top.v] --> A5
-  Top --> T1
-  A6 --> Top
+  subgraph Board[板级接口]
+    B1[board_eth_bridge.v]
+    B2[top_board.v]
+  end
+
+  N4 --> P1
+  P1 --> A5
+  A6 --> T1
+  T1 --> N1
+  B1 --> N1
+  B2 --> B1
 ```
 
 ## 3. 模块职责与接口要点
 
-### 3.1 m1_protocol_core.v
+### 3.1 network_handler.v（2026-06-03 新增）
+
+职责：
+
+1. 网络协议栈顶层处理器
+2. 捕获以太网头（14 字节）
+3. 根据 EtherType 分发到不同协议处理器
+4. TX 多路复用（优先级：ARP > ICMP > UDP）
+
+关键接口：
+
+- RX：来自 mac_rx 的字节流
+- TX：发送到 rgmii_tx_sync 的字节流
+- UDP Payload：与应用层交互
+- 配置参数：LOCAL_MAC、LOCAL_IP、UDP_DST_PORT
+
+### 3.2 arp_responder.v（2026-06-03 新增）
+
+职责：
+
+1. 响应 ARP 请求
+2. 提供 FPGA 的 MAC 地址给 PC
+
+功能：
+
+1. 检测 ARP 请求（opcode = 0x0001）
+2. 验证目标 IP 是否为本机 IP
+3. 构造 ARP 响应（包含本机 MAC 地址）
+4. 计算 FCS（CRC32）
+
+配置参数：
+
+- `LOCAL_MAC`：本机 MAC 地址（默认 02:00:00:00:00:01）
+- `LOCAL_IP`：本机 IP 地址（默认 169.254.0.118）
+
+### 3.3 icmp_responder.v（2026-06-03 新增）
+
+职责：
+
+1. 响应 ICMP Ping 请求
+2. 方便测试网络连通性
+
+功能：
+
+1. 检测 ICMP Echo Request（type = 8）
+2. 验证目标 IP 是否为本机 IP
+3. 存储 ICMP payload（最多 256 字节）
+4. 构造 ICMP Echo Reply
+5. 计算 IP 头校验和
+
+### 3.4 m1_protocol_core.v
 
 职责：
 
@@ -55,7 +124,7 @@ flowchart LR
 - `frame_rejected`
 - `frame_reject_reason`（1=header，2=length，3=crc，4=size）
 
-### 3.2 indicator_top.v
+### 3.5 indicator_top.v
 
 职责：
 
@@ -63,14 +132,14 @@ flowchart LR
 2. 汇聚 MA/RSI/MACD/量比输出
 3. 形成统一指标输出给评分模块
 
-### 3.3 score_calc.v
+### 3.6 score_calc.v
 
 职责：
 
 1. 基于指标计算综合评分
 2. 输出离散决策等级
 
-### 3.4 udp_result_tx.v
+### 3.7 udp_result_tx.v
 
 职责：
 
@@ -78,7 +147,25 @@ flowchart LR
 2. 按字节输出发送流
 3. 通过 `tx_valid` / `tx_last` 指示帧边界
 
-### 3.5 top.v
+### 3.8 udp_tx_engine.v
+
+职责：
+
+1. 构造完整的以太网/IPv4/UDP 帧
+2. 计算 IP 头校验和
+3. 计算 FCS（CRC32）
+4. 插入前导码和 SFD
+
+### 3.9 board_eth_bridge.v
+
+职责：
+
+1. 板级以太网桥接
+2. 实例化网络处理器和 PHY 接口
+3. 管理 CDC FIFO
+4. 提供调试输出
+
+### 3.10 top.v
 
 职责：
 
@@ -86,7 +173,7 @@ flowchart LR
 2. 对外输出联调与观察信号
 3. 作为系统级 TB 的主入口
 
-### 3.6 top_stub.v
+### 3.11 top_stub.v
 
 用途：最小占位顶层，保留兼容性，不作为主联调入口。
 
