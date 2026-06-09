@@ -44,11 +44,7 @@ module top_board (
     output wire        ethb_txd0,
     output wire        ethb_txd1,
     output wire        ethb_txd2,
-    output wire        ethb_txd3,
-
-    // Debug outputs
-    output wire        dbg_arp_responded,
-    output wire        dbg_ping_responded
+    output wire        ethb_txd3
 );
 
 wire        sys_rst_n;
@@ -83,6 +79,8 @@ wire [7:0]  score_debug;
 wire [2:0]  decision_debug;
 wire        result_valid_debug;
 wire [2:0]  frame_reject_reason_debug;
+wire        dbg_arp_responded;
+wire        dbg_ping_responded;
 
 board_reset_gen u_reset_gen (
     .clk   (sys_clk_50m),

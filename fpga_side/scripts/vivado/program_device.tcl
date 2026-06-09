@@ -34,14 +34,15 @@ if {![file exists $bit_file]} {
   exit 3
 }
 
-open_hw_manager
-connect_hw_server -allow_non_jtag
+# Vivado 2019.1 compatible hardware manager API
+open_hw
+connect_hw_server
 open_hw_target
 
 set hw_devices [get_hw_devices]
 if {[llength $hw_devices] == 0} {
   puts "ERROR: no hardware devices detected"
-  close_hw_manager
+  close_hw
   exit 4
 }
 
@@ -57,4 +58,4 @@ puts "DEVICE: $dev"
 puts "BIT: $bit_file"
 
 close_hw_target
-close_hw_manager
+close_hw

@@ -34,8 +34,10 @@ webtalk_*.backup.jou
 *.runs/
 *.sim/
 
-# Vivado build output (retain only final .bit)
-fpga_side/rtl/build/*/
+# Vivado build output — retain only final .bit for one-click programming
+fpga_side/rtl/build/**
+!fpga_side/rtl/build/**/
+!fpga_side/rtl/build/**/*.bit
 
 # PDF Extraction intermediates (superseded by .xdc)
 reports/

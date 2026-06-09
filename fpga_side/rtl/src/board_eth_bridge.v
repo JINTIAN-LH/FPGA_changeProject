@@ -199,17 +199,16 @@ assign tx_stream_data  = tx_fifo_dout[7:0];
 assign tx_stream_last  = tx_fifo_dout[8];
 assign tx_fifo_rd_en   = tx_stream_valid & tx_stream_ready;
 
-// TX MUX: network_handler output or direct UDP TX
-// For now, use network_handler which handles ARP/ICMP priority
-assign net_tx_ready = 1'b1;  // Always ready to TX
+// Data flow: TX FIFO -> network_handler (ARP/ICMP/app mux) -> udp_tx_engine -> GMII
+// network_handler arbitrates TX priority: ARP > ICMP > Application UDP
 
 udp_tx_engine u_udp_tx_engine (
     .clk      (gmii_tx_clk),
     .rst_n    (rst_n & mdio_init_done),
-    .s_valid  (tx_stream_valid),
-    .s_data   (tx_stream_data),
-    .s_last   (tx_stream_last),
-    .s_ready  (tx_stream_ready),
+    .s_valid  (net_tx_valid),
+    .s_data   (net_tx_data),
+    .s_last   (net_tx_last),
+    .s_ready  (net_tx_ready),
     .gmii_tx_en (gmii_tx_en),
     .gmii_txd   (gmii_tx_data)
 );

@@ -60,7 +60,7 @@ reg [31:0] crc;
 reg [31:0] crc_final;
 
 // IP checksum
-reg [15:0] ip_checksum;
+wire [15:0] ip_checksum;
 
 function [31:0] crc32_byte;
     input [31:0] crc_in;
@@ -146,9 +146,9 @@ function [7:0] reply_header_byte;
 endfunction
 
 // IP checksum calculation
+wire [15:0] ip_total_len_reply = rx_ip_total_len;
 wire [31:0] ip_checksum_raw = 16'h4500 + ip_total_len_reply + 16'h0000 + 16'h4001 +
                               LOCAL_IP[31:16] + LOCAL_IP[15:0] + rx_src_ip[31:16] + rx_src_ip[15:0];
-wire [15:0] ip_total_len_reply = rx_ip_total_len;
 assign ip_checksum = ~(ip_checksum_raw[31:16] + ip_checksum_raw[15:0]);
 
 always @(posedge clk or negedge rst_n) begin
